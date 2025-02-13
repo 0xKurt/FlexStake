@@ -33,4 +33,13 @@ contract Error {
     error NotPaused();
     error EmergencyPauseActive();
     error VestingRequiresLocking();
+    error VestingDurationExceedsLockDuration();
+    error VestingStartTooFarInFuture();
+    error BaseMultiplierTooLow();
+    error LockDurationTooShortForVesting();
+    error InsufficientBalance();
+    error ExceedsWithdrawableAmount();
+    error EmergencyPauseNotActive();
+    error ArrayLengthMismatch();
+    error CannotMigrateLockedStake();
 }

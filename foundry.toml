@@ -9,5 +9,6 @@ remappings = [
 via_ir = true
 optimizer = true
 optimizer_runs = 1000
+solc = "0.8.20"
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
