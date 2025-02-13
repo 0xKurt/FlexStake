@@ -1,63 +1,24 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import "./interfaces/IStakingHooks.sol";
+import "./errors/Error.sol";
 
-// New interface for hooks
-interface IStakingHooks {
-    function beforeStake(
-        address user,
-        uint256 optionId,
-        uint256 amount,
-        uint256 lockDuration,
-        bytes calldata data
-    ) external;
-
-    function afterStake(
-        address user,
-        uint256 optionId,
-        uint256 amount,
-        uint256 lockDuration,
-        bytes calldata data
-    ) external;
-
-    function beforeWithdraw(
-        address user,
-        uint256 optionId,
-        uint256 amount,
-        bytes calldata data
-    ) external;
-
-    function afterWithdraw(
-        address user,
-        uint256 optionId,
-        uint256 amount,
-        bool penaltyApplied,
-        bytes calldata data
-    ) external;
-
-    function beforeExtend(
-        address user,
-        uint256 optionId,
-        uint256 newDuration,
-        bytes calldata data
-    ) external;
-
-    function afterExtend(
-        address user,
-        uint256 optionId,
-        uint256 newDuration,
-        bytes calldata data
-    ) external;
-}
-
-contract StakingContract is Ownable {
+/**
+ * @title FlexStake Contract
+ * @notice A flexible staking contract that supports multiple staking options with various features
+ * including locking, vesting, penalties, and hooks.
+ * @dev This contract allows creation and management of different staking options with customizable parameters
+ * @custom:security-contact security@flexstake.example.com
+ */
+contract StakingContract is Error, OwnableUpgradeable, ReentrancyGuardUpgradeable {
     using SafeERC20 for IERC20;
 
     struct Option {
-        uint256 id;
         bool isLocked;
         uint256 minLockDuration;
         uint256 maxLockDuration;
@@ -73,31 +34,8 @@ contract StakingContract is Ownable {
         uint256 baseMultiplier;
         bool hasTimeBasedMultiplier;
         uint256 multiplierIncreaseRate;
-        bool allowReallocation;
         address token;
         bool paused;
-        bool requiresData;
-        address hookContract;
-    }
-
-    struct OptionParams {
-        bool isLocked;
-        uint256 minLockDuration;
-        uint256 maxLockDuration;
-        bool hasEarlyExitPenalty;
-        uint256 penaltyPercentage;
-        address penaltyRecipient;
-        uint256 minStakeAmount;
-        uint256 maxStakeAmount;
-        bool hasLinearVesting;
-        uint256 vestingStart;
-        uint256 vestingCliff;
-        uint256 vestingDuration;
-        uint256 baseMultiplier;
-        bool hasTimeBasedMultiplier;
-        uint256 multiplierIncreaseRate;
-        bool allowReallocation;
-        address token;
         bool requiresData;
         address hookContract;
     }
@@ -136,46 +74,114 @@ contract StakingContract is Ownable {
     );
     event OptionPaused(uint256 indexed optionId);
     event OptionUnpaused(uint256 indexed optionId);
+    event StakingOperations(
+        address indexed user,
+        uint256 indexed optionId,
+        uint256 amount,
+        uint256 duration,
+        bytes32 operationType
+    );
 
-    // Custom Errors
-    error MinimumStakeGreaterThanZero();
-    error MaxStakeGreaterThanMinStake();
-    error LockedStakingMustHaveMinDuration();
-    error MaxDurationGreaterThanMinDuration();
-    error InvalidPenaltyPercentage();
-    error PenaltyRecipientRequired();
-    error FlexibleStakingCannotHaveLockPeriods();
-    error FlexibleStakingCannotHavePenalty();
-    error NoPenaltiesAllowedForFlexibleStaking();
-    error NoPenaltyRecipientForFlexibleStaking();
-    error VestingMustHaveDuration();
-    error VestingMustHaveStartTime();
-    error CliffMustBeLessThanOrEqualToVestingDuration();
-    error NoVestingSettingsAllowed();
-    error MultiplierRateMustBeGreaterThanZero();
-    error NoMultiplierIncreaseRateIfDisabled();
-    error InvalidStakeAmount();
-    error StakeNotFound();
-    error WithdrawBeforeLockPeriod();
-    error InsufficientBalanceForPenalty();
-    error NoPenaltiesForFlexibleStaking();
-    error StakingPaused();
-    error DataRequired();
-    error NoDataAllowed();
+    // State variables for emergency pause
+    bool public emergencyPaused;
+    
+    // Batch events
+    bytes32 private constant OPERATION_STAKE = keccak256("STAKE");
+    bytes32 private constant OPERATION_WITHDRAW = keccak256("WITHDRAW");
+    bytes32 private constant OPERATION_EXTEND = keccak256("EXTEND");
 
-    constructor(address _owner) Ownable(_owner) {}
+    /**
+     * @dev Modifier to prevent reentrancy in functions that interact with hooks
+     */
+    modifier nonReentrantHooks() {
+        if (emergencyPaused) revert EmergencyPauseActive();
+        _;
+    }
+
+    /**
+     * @dev Emergency pause modifier
+     */
+    modifier whenNotEmergencyPaused() {
+        if (emergencyPaused) revert EmergencyPaused();
+        _;
+    }
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    /**
+     * @dev Initializes the contract replacing the constructor
+     * @param _owner The address that will own the contract
+     */
+    function initialize(address _owner) external initializer {
+        __Ownable_init(_owner);
+        __ReentrancyGuard_init();
+        nextOptionId = 1;
+        emergencyPaused = false;
+    }
+
+    /**
+     * @notice Checks if a stake requires additional data
+     * @param optionId The ID of the staking option
+     * @return bool True if the stake requires additional data
+     */
+    function requiresStakeData(uint256 optionId) external view returns (bool) {
+        return options[optionId].requiresData;
+    }
+
+    /**
+     * @notice Emergency pause all contract operations
+     * @dev Only callable by contract owner
+     */
+    function setEmergencyPause(bool _paused) external onlyOwner {
+        emergencyPaused = _paused;
+    }
+
+    /**
+     * @notice Validates a hook contract address
+     * @dev Checks if the contract exists and implements required interface
+     * @param hookContract Address of the hook contract to validate
+     */
+    function _validateHookContract(address hookContract) internal {
+        if (hookContract == address(0)) revert HookContractZeroAddress();
+        
+        // Check if contract exists
+        uint256 codeSize;
+        assembly {
+            codeSize := extcodesize(hookContract)
+        }
+        if (codeSize == 0) revert InvalidHookContract();
+
+        // Optionally check interface implementation
+        try IStakingHooks(hookContract).beforeStake{gas: 2300}(address(0), 0, 0, 0, "") {
+            revert InvalidHookContract();
+        } catch {
+            // Expected to fail - this means the function exists
+        }
+    }
 
     // Option Management Functions
     function createOption(
-        OptionParams calldata params
+        Option calldata option
     ) external onlyOwner returns (uint256) {
-        _validateBasicParams(params);
-        _validateLockingParams(params);
-        _validateVestingParams(params);
-        _validateMultiplierParams(params);
+        if (option.hookContract != address(0)) {
+            _validateHookContract(option.hookContract);
+        }
 
-        uint256 optionId = nextOptionId++;
-        _createOptionStorage(optionId, params);
+        _validateBasicParams(option);
+        _validateLockingParams(option);
+        _validateVestingParams(option);
+        _validateMultiplierParams(option);
+
+        uint256 optionId;
+        unchecked {
+            optionId = nextOptionId++;
+        }
+
+        options[optionId] = option;
+        options[optionId].paused = false; // Ensure new options start unpaused
 
         emit OptionCreated(optionId, options[optionId]);
         return optionId;
@@ -183,14 +189,14 @@ contract StakingContract is Ownable {
 
     function pauseStaking(uint256 optionId) external onlyOwner {
         Option storage option = options[optionId];
-        require(!option.paused, "Staking is already paused");
+        if (option.paused) revert AlreadyPaused();
         option.paused = true;
         emit OptionPaused(optionId);
     }
 
     function unpauseStaking(uint256 optionId) external onlyOwner {
         Option storage option = options[optionId];
-        require(option.paused, "Staking is not paused");
+        if (!option.paused) revert NotPaused();
         option.paused = false;
         emit OptionUnpaused(optionId);
     }
@@ -201,14 +207,15 @@ contract StakingContract is Ownable {
         uint256 amount,
         uint256 lockDuration,
         bytes calldata data
-    ) external {
+    ) external nonReentrantHooks whenNotEmergencyPaused {
         Option storage option = options[optionId];
+        address hookAddr = option.hookContract;
 
         if (option.requiresData && data.length == 0) revert DataRequired();
         if (!option.requiresData && data.length > 0) revert NoDataAllowed();
 
-        if (option.hookContract != address(0)) {
-            IStakingHooks(option.hookContract).beforeStake(
+        if (hookAddr != address(0)) {
+            IStakingHooks(hookAddr).beforeStake(
                 msg.sender,
                 optionId,
                 amount,
@@ -244,8 +251,8 @@ contract StakingContract is Ownable {
             data: data
         });
 
-        if (option.hookContract != address(0)) {
-            IStakingHooks(option.hookContract).afterStake(
+        if (hookAddr != address(0)) {
+            IStakingHooks(hookAddr).afterStake(
                 msg.sender,
                 optionId,
                 amount,
@@ -261,14 +268,24 @@ contract StakingContract is Ownable {
             lockDuration,
             nextOptionId
         );
+
+        // Batch event
+        emit StakingOperations(
+            msg.sender,
+            optionId,
+            amount,
+            lockDuration,
+            OPERATION_STAKE
+        );
     }
 
     function extendStake(
         uint256 optionId,
         uint256 additionalLockDuration
-    ) external {
+    ) external nonReentrantHooks whenNotEmergencyPaused {
         Option storage option = options[optionId];
         Stake storage userStake = stakes[optionId][msg.sender];
+        address hookAddr = option.hookContract;
 
         if (userStake.amount == 0) revert StakeNotFound();
 
@@ -277,8 +294,8 @@ contract StakingContract is Ownable {
         if (newLockDuration > option.maxLockDuration)
             revert InvalidStakeAmount();
 
-        if (option.hookContract != address(0)) {
-            IStakingHooks(option.hookContract).beforeExtend(
+        if (hookAddr != address(0)) {
+            IStakingHooks(hookAddr).beforeExtend(
                 msg.sender,
                 optionId,
                 newLockDuration,
@@ -289,8 +306,8 @@ contract StakingContract is Ownable {
         userStake.lockDuration = newLockDuration;
         userStake.lastExtensionTime = block.timestamp;
 
-        if (option.hookContract != address(0)) {
-            IStakingHooks(option.hookContract).afterExtend(
+        if (hookAddr != address(0)) {
+            IStakingHooks(hookAddr).afterExtend(
                 msg.sender,
                 optionId,
                 newLockDuration,
@@ -299,22 +316,32 @@ contract StakingContract is Ownable {
         }
 
         emit StakeExtended(optionId, msg.sender, newLockDuration);
+
+        // Batch event
+        emit StakingOperations(
+            msg.sender,
+            optionId,
+            0,
+            newLockDuration,
+            OPERATION_EXTEND
+        );
     }
 
-    function withdraw(uint256 optionId) external {
+    function withdraw(uint256 optionId) external nonReentrantHooks whenNotEmergencyPaused {
         Option storage option = options[optionId];
         Stake storage userStake = stakes[optionId][msg.sender];
+        address hookAddr = option.hookContract;
 
-        if (option.hookContract != address(0)) {
-            IStakingHooks(option.hookContract).beforeWithdraw(
+        if (userStake.amount == 0) revert StakeNotFound();
+
+        if (hookAddr != address(0)) {
+            IStakingHooks(hookAddr).beforeWithdraw(
                 msg.sender,
                 optionId,
                 userStake.amount,
                 userStake.data
             );
         }
-
-        if (userStake.amount == 0) revert StakeNotFound();
 
         uint256 amountToWithdraw = userStake.amount;
         bool penaltyApplied = false;
@@ -331,8 +358,8 @@ contract StakingContract is Ownable {
         _transferTokens(option.token, msg.sender, amountToWithdraw);
         _resetUserStake(optionId, msg.sender);
 
-        if (option.hookContract != address(0)) {
-            IStakingHooks(option.hookContract).afterWithdraw(
+        if (hookAddr != address(0)) {
+            IStakingHooks(hookAddr).afterWithdraw(
                 msg.sender,
                 optionId,
                 amountToWithdraw,
@@ -342,6 +369,15 @@ contract StakingContract is Ownable {
         }
 
         emit Withdraw(optionId, msg.sender, amountToWithdraw, penaltyApplied);
+
+        // Batch event
+        emit StakingOperations(
+            msg.sender,
+            optionId,
+            amountToWithdraw,
+            0,
+            OPERATION_WITHDRAW
+        );
     }
 
     // Helper Functions
@@ -438,98 +474,66 @@ contract StakingContract is Ownable {
     }
 
     // Validation Functions
-    function _validateBasicParams(OptionParams calldata params) internal pure {
-        if (params.minStakeAmount == 0) revert MinimumStakeGreaterThanZero();
+    function _validateBasicParams(Option calldata option) internal pure {
+        if (option.minStakeAmount == 0) revert MinimumStakeGreaterThanZero();
         if (
-            params.maxStakeAmount != 0 &&
-            params.maxStakeAmount < params.minStakeAmount
+            option.maxStakeAmount != 0 &&
+            option.maxStakeAmount < option.minStakeAmount
         ) revert MaxStakeGreaterThanMinStake();
     }
 
-    function _validateLockingParams(
-        OptionParams calldata params
-    ) internal pure {
-        if (params.isLocked) {
-            if (params.minLockDuration == 0)
+    function _validateLockingParams(Option calldata option) internal pure {
+        if (option.isLocked) {
+            if (option.minLockDuration == 0)
                 revert LockedStakingMustHaveMinDuration();
-            if (params.maxLockDuration < params.minLockDuration)
+            if (option.maxLockDuration < option.minLockDuration)
                 revert MaxDurationGreaterThanMinDuration();
 
-            if (params.hasEarlyExitPenalty) {
+            if (option.hasEarlyExitPenalty) {
                 if (
-                    params.penaltyPercentage == 0 ||
-                    params.penaltyPercentage > 10000
+                    option.penaltyPercentage == 0 ||
+                    option.penaltyPercentage > 10000
                 ) revert InvalidPenaltyPercentage();
-                if (params.penaltyRecipient == address(0))
+                if (option.penaltyRecipient == address(0))
                     revert PenaltyRecipientRequired();
             }
         } else {
-            if (params.minLockDuration != 0 || params.maxLockDuration != 0)
+            if (option.minLockDuration != 0 || option.maxLockDuration != 0)
                 revert FlexibleStakingCannotHaveLockPeriods();
-            if (params.hasEarlyExitPenalty)
+            if (option.hasEarlyExitPenalty)
                 revert FlexibleStakingCannotHavePenalty();
-            if (params.penaltyPercentage != 0)
+            if (option.penaltyPercentage != 0)
                 revert NoPenaltiesAllowedForFlexibleStaking();
-            if (params.penaltyRecipient != address(0))
+            if (option.penaltyRecipient != address(0))
                 revert NoPenaltyRecipientForFlexibleStaking();
         }
     }
 
-    function _validateVestingParams(
-        OptionParams calldata params
-    ) internal pure {
-        if (params.hasLinearVesting) {
-            if (params.vestingDuration == 0) revert VestingMustHaveDuration();
-            if (params.vestingStart == 0) revert VestingMustHaveStartTime();
-            if (params.vestingCliff > params.vestingDuration)
+    function _validateVestingParams(Option calldata option) internal pure {
+        if (option.hasLinearVesting) {
+            // Require locking if vesting is enabled
+            if (!option.isLocked) revert VestingRequiresLocking();
+            
+            if (option.vestingDuration == 0) revert VestingMustHaveDuration();
+            if (option.vestingStart == 0) revert VestingMustHaveStartTime();
+            if (option.vestingCliff > option.vestingDuration)
                 revert CliffMustBeLessThanOrEqualToVestingDuration();
         } else {
             if (
-                params.vestingStart != 0 ||
-                params.vestingCliff != 0 ||
-                params.vestingDuration != 0
+                option.vestingStart != 0 ||
+                option.vestingCliff != 0 ||
+                option.vestingDuration != 0
             ) revert NoVestingSettingsAllowed();
         }
     }
 
-    function _validateMultiplierParams(
-        OptionParams calldata params
-    ) internal pure {
-        if (params.hasTimeBasedMultiplier) {
-            if (params.multiplierIncreaseRate == 0)
+    function _validateMultiplierParams(Option calldata option) internal pure {
+        if (option.hasTimeBasedMultiplier) {
+            if (option.multiplierIncreaseRate == 0)
                 revert MultiplierRateMustBeGreaterThanZero();
         } else {
-            if (params.multiplierIncreaseRate != 0)
+            if (option.multiplierIncreaseRate != 0)
                 revert NoMultiplierIncreaseRateIfDisabled();
         }
-    }
-
-    function _createOptionStorage(
-        uint256 optionId,
-        OptionParams calldata params
-    ) internal {
-        options[optionId] = Option({
-            id: optionId,
-            isLocked: params.isLocked,
-            minLockDuration: params.minLockDuration,
-            maxLockDuration: params.maxLockDuration,
-            hasEarlyExitPenalty: params.hasEarlyExitPenalty,
-            penaltyPercentage: params.penaltyPercentage,
-            penaltyRecipient: params.penaltyRecipient,
-            minStakeAmount: params.minStakeAmount,
-            maxStakeAmount: params.maxStakeAmount,
-            hasLinearVesting: params.hasLinearVesting,
-            vestingStart: params.vestingStart,
-            vestingCliff: params.vestingCliff,
-            vestingDuration: params.vestingDuration,
-            baseMultiplier: params.baseMultiplier,
-            hasTimeBasedMultiplier: params.hasTimeBasedMultiplier,
-            multiplierIncreaseRate: params.multiplierIncreaseRate,
-            allowReallocation: params.allowReallocation,
-            token: params.token,
-            paused: false,
-            requiresData: params.requiresData,
-            hookContract: params.hookContract
-        });
     }
 }
