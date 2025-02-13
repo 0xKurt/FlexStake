@@ -15,11 +15,7 @@ import "./errors/Error.sol";
  * @dev This contract allows creation and management of different staking options with customizable parameters
  * @custom:security-contact security@flexstake.example.com
  */
-contract StakingContract is
-    Error,
-    OwnableUpgradeable,
-    ReentrancyGuardUpgradeable
-{
+contract StakingContract is Error, OwnableUpgradeable, ReentrancyGuardUpgradeable {
     using SafeERC20 for IERC20;
 
     struct Option {
@@ -59,66 +55,23 @@ contract StakingContract is
     // Events
     event OptionCreated(uint256 indexed id, Option option);
     event StakeCreated(
-        uint256 indexed optionId,
-        address indexed staker,
-        uint256 amount,
-        uint256 lockDuration,
-        uint256 stakeId
+        uint256 indexed optionId, address indexed staker, uint256 amount, uint256 lockDuration, uint256 stakeId
     );
-    event StakeExtended(
-        uint256 indexed optionId,
-        address indexed staker,
-        uint256 newLockDuration
-    );
-    event Withdraw(
-        uint256 indexed optionId,
-        address indexed staker,
-        uint256 amount,
-        bool penaltyApplied
-    );
+    event StakeExtended(uint256 indexed optionId, address indexed staker, uint256 newLockDuration);
+    event Withdraw(uint256 indexed optionId, address indexed staker, uint256 amount, bool penaltyApplied);
     event OptionPaused(uint256 indexed optionId);
     event OptionUnpaused(uint256 indexed optionId);
     event StakingOperations(
-        address indexed user,
-        uint256 indexed optionId,
-        uint256 amount,
-        uint256 duration,
-        bytes32 operationType
+        address indexed user, uint256 indexed optionId, uint256 amount, uint256 duration, bytes32 operationType
     );
-    event EmergencyWithdraw(
-        uint256 indexed optionId,
-        address indexed staker,
-        uint256 amount
-    );
+    event EmergencyWithdraw(uint256 indexed optionId, address indexed staker, uint256 amount);
     event StakeMigrated(
-        uint256 indexed fromOptionId,
-        uint256 indexed toOptionId,
-        address indexed staker,
-        uint256 amount
+        uint256 indexed fromOptionId, uint256 indexed toOptionId, address indexed staker, uint256 amount
     );
-    event BatchStakeCreated(
-        uint256[] optionIds,
-        address indexed staker,
-        uint256[] amounts,
-        uint256[] lockDurations
-    );
-    event BatchStakeExtended(
-        uint256[] optionIds,
-        address indexed staker,
-        uint256[] newLockDurations
-    );
-    event BatchWithdraw(
-        uint256[] optionIds,
-        address indexed staker,
-        uint256[] amounts,
-        bool[] penaltiesApplied
-    );
-    event BatchStakeMigrated(
-        uint256[] fromOptionIds,
-        uint256[] toOptionIds,
-        address indexed staker,
-        uint256[] amounts
-    );
+    event BatchStakeCreated(uint256[] optionIds, address indexed staker, uint256[] amounts, uint256[] lockDurations);
+    event BatchStakeExtended(uint256[] optionIds, address indexed staker, uint256[] newLockDurations);
+    event BatchWithdraw(uint256[] optionIds, address indexed staker, uint256[] amounts, bool[] penaltiesApplied);
+    event BatchStakeMigrated(uint256[] fromOptionIds, uint256[] toOptionIds, address indexed staker, uint256[] amounts);
 
     // State variables for emergency pause
     bool public emergencyPaused;
@@ -179,7 +132,7 @@ contract StakingContract is
 
     function _validateHookContract(address hookContract) internal {
         if (hookContract == address(0)) revert HookContractZeroAddress();
-        
+
         // Check if contract exists
         uint256 codeSize;
         assembly {
@@ -196,9 +149,7 @@ contract StakingContract is
     }
 
     // Option Management Functions
-    function createOption(
-        Option calldata option
-    ) external onlyOwner returns (uint256) {
+    function createOption(Option calldata option) external onlyOwner returns (uint256) {
         if (option.hookContract != address(0)) {
             _validateHookContract(option.hookContract);
         }
@@ -235,21 +186,15 @@ contract StakingContract is
     }
 
     // Staking Functions
-    function stake(
-        uint256 optionId,
-        uint256 amount,
-        uint256 lockDuration,
-        bytes calldata data
-    ) external nonReentrantHooks whenNotEmergencyPaused {
+    function stake(uint256 optionId, uint256 amount, uint256 lockDuration, bytes calldata data)
+        external
+        nonReentrantHooks
+        whenNotEmergencyPaused
+    {
         _stake(optionId, amount, lockDuration, data);
     }
 
-    function _stake(
-        uint256 optionId,
-        uint256 amount,
-        uint256 lockDuration,
-        bytes calldata data
-    ) internal {
+    function _stake(uint256 optionId, uint256 amount, uint256 lockDuration, bytes calldata data) internal {
         Option storage option = options[optionId];
         address hookAddr = option.hookContract;
 
@@ -257,36 +202,26 @@ contract StakingContract is
         if (!option.requiresData && data.length > 0) revert NoDataAllowed();
 
         if (hookAddr != address(0)) {
-            IStakingHooks(hookAddr).beforeStake(
-                msg.sender,
-                optionId,
-                amount,
-                lockDuration,
-                data
-            );
+            IStakingHooks(hookAddr).beforeStake(msg.sender, optionId, amount, lockDuration, data);
         }
 
         if (option.paused) revert StakingPaused();
-        if (
-            amount < option.minStakeAmount ||
-            (option.maxStakeAmount > 0 && amount > option.maxStakeAmount)
-        ) revert InvalidStakeAmount();
+        if (amount < option.minStakeAmount || (option.maxStakeAmount > 0 && amount > option.maxStakeAmount)) {
+            revert InvalidStakeAmount();
+        }
 
         if (option.isLocked) {
-            if (
-                lockDuration < option.minLockDuration ||
-                lockDuration > option.maxLockDuration
-            ) revert InvalidStakeAmount();
+            if (lockDuration < option.minLockDuration || lockDuration > option.maxLockDuration) {
+                revert InvalidStakeAmount();
+            }
         } else {
-            if (lockDuration != 0)
+            if (lockDuration != 0) {
                 revert FlexibleStakingCannotHaveLockPeriods();
+            }
         }
 
         if (option.hasLinearVesting) {
-            if (
-                block.timestamp + lockDuration <
-                option.vestingStart + option.vestingDuration
-            ) {
+            if (block.timestamp + lockDuration < option.vestingStart + option.vestingDuration) {
                 revert LockDurationTooShortForVesting();
             }
         }
@@ -303,43 +238,23 @@ contract StakingContract is
         });
 
         if (hookAddr != address(0)) {
-            IStakingHooks(hookAddr).afterStake(
-                msg.sender,
-                optionId,
-                amount,
-                lockDuration,
-                data
-            );
+            IStakingHooks(hookAddr).afterStake(msg.sender, optionId, amount, lockDuration, data);
         }
 
-        emit StakeCreated(
-            optionId,
-            msg.sender,
-            amount,
-            lockDuration,
-            nextOptionId
-        );
+        emit StakeCreated(optionId, msg.sender, amount, lockDuration, nextOptionId);
 
-        emit StakingOperations(
-            msg.sender,
-            optionId,
-            amount,
-            lockDuration,
-            OPERATION_STAKE
-        );
+        emit StakingOperations(msg.sender, optionId, amount, lockDuration, OPERATION_STAKE);
     }
 
-    function extendStake(
-        uint256 optionId,
-        uint256 additionalLockDuration
-    ) external nonReentrantHooks whenNotEmergencyPaused {
+    function extendStake(uint256 optionId, uint256 additionalLockDuration)
+        external
+        nonReentrantHooks
+        whenNotEmergencyPaused
+    {
         _extendStake(optionId, additionalLockDuration);
     }
 
-    function _extendStake(
-        uint256 optionId,
-        uint256 additionalLockDuration
-    ) internal {
+    function _extendStake(uint256 optionId, uint256 additionalLockDuration) internal {
         Option storage option = options[optionId];
         if (option.paused) revert StakingPaused();
 
@@ -348,57 +263,36 @@ contract StakingContract is
 
         if (userStake.amount == 0) revert StakeNotFound();
 
-        uint256 newLockDuration = userStake.lockDuration +
-            additionalLockDuration;
-        if (newLockDuration > option.maxLockDuration)
+        uint256 newLockDuration = userStake.lockDuration + additionalLockDuration;
+        if (newLockDuration > option.maxLockDuration) {
             revert InvalidStakeAmount();
+        }
 
         // Validate against vesting schedule
         if (option.hasLinearVesting) {
-            if (
-                block.timestamp + newLockDuration <
-                option.vestingStart + option.vestingDuration
-            ) {
+            if (block.timestamp + newLockDuration < option.vestingStart + option.vestingDuration) {
                 revert LockDurationTooShortForVesting();
             }
         }
 
         if (hookAddr != address(0)) {
-            IStakingHooks(hookAddr).beforeExtend(
-                msg.sender,
-                optionId,
-                newLockDuration,
-                userStake.data
-            );
+            IStakingHooks(hookAddr).beforeExtend(msg.sender, optionId, newLockDuration, userStake.data);
         }
 
         userStake.lockDuration = newLockDuration;
         userStake.lastExtensionTime = block.timestamp;
 
         if (hookAddr != address(0)) {
-            IStakingHooks(hookAddr).afterExtend(
-                msg.sender,
-                optionId,
-                newLockDuration,
-                userStake.data
-            );
+            IStakingHooks(hookAddr).afterExtend(msg.sender, optionId, newLockDuration, userStake.data);
         }
 
         emit StakeExtended(optionId, msg.sender, newLockDuration);
 
         // Batch event
-        emit StakingOperations(
-            msg.sender,
-            optionId,
-            0,
-            newLockDuration,
-            OPERATION_EXTEND
-        );
+        emit StakingOperations(msg.sender, optionId, 0, newLockDuration, OPERATION_EXTEND);
     }
 
-    function withdraw(
-        uint256 optionId
-    ) external nonReentrantHooks whenNotEmergencyPaused {
+    function withdraw(uint256 optionId) external nonReentrantHooks whenNotEmergencyPaused {
         _withdraw(optionId);
     }
 
@@ -410,23 +304,14 @@ contract StakingContract is
         if (userStake.amount == 0) revert StakeNotFound();
 
         if (hookAddr != address(0)) {
-            IStakingHooks(hookAddr).beforeWithdraw(
-                msg.sender,
-                optionId,
-                userStake.amount,
-                userStake.data
-            );
+            IStakingHooks(hookAddr).beforeWithdraw(msg.sender, optionId, userStake.amount, userStake.data);
         }
 
         amountWithdrawn = userStake.amount;
         penaltyApplied = false;
 
         if (option.isLocked) {
-            amountWithdrawn = _checkLockAndApplyPenalty(
-                option,
-                userStake,
-                amountWithdrawn
-            );
+            amountWithdrawn = _checkLockAndApplyPenalty(option, userStake, amountWithdrawn);
             penaltyApplied = amountWithdrawn != userStake.amount;
         }
 
@@ -434,23 +319,11 @@ contract StakingContract is
         _resetUserStake(optionId, msg.sender);
 
         if (hookAddr != address(0)) {
-            IStakingHooks(hookAddr).afterWithdraw(
-                msg.sender,
-                optionId,
-                amountWithdrawn,
-                penaltyApplied,
-                userStake.data
-            );
+            IStakingHooks(hookAddr).afterWithdraw(msg.sender, optionId, amountWithdrawn, penaltyApplied, userStake.data);
         }
 
         emit Withdraw(optionId, msg.sender, amountWithdrawn, penaltyApplied);
-        emit StakingOperations(
-            msg.sender,
-            optionId,
-            amountWithdrawn,
-            0,
-            OPERATION_WITHDRAW
-        );
+        emit StakingOperations(msg.sender, optionId, amountWithdrawn, 0, OPERATION_WITHDRAW);
 
         return (amountWithdrawn, penaltyApplied);
     }
@@ -480,10 +353,7 @@ contract StakingContract is
      * @param optionId The ID of the staking option
      * @param amount The amount to withdraw
      */
-    function withdrawPartial(
-        uint256 optionId,
-        uint256 amount
-    ) external nonReentrantHooks whenNotEmergencyPaused {
+    function withdrawPartial(uint256 optionId, uint256 amount) external nonReentrantHooks whenNotEmergencyPaused {
         Option storage option = options[optionId];
         Stake storage userStake = stakes[optionId][msg.sender];
         address hookAddr = option.hookContract;
@@ -495,23 +365,14 @@ contract StakingContract is
         if (amount > withdrawableAmount) revert ExceedsWithdrawableAmount();
 
         if (hookAddr != address(0)) {
-            IStakingHooks(hookAddr).beforeWithdraw(
-                msg.sender,
-                optionId,
-                amount,
-                userStake.data
-            );
+            IStakingHooks(hookAddr).beforeWithdraw(msg.sender, optionId, amount, userStake.data);
         }
 
         uint256 amountToWithdraw = amount;
         bool penaltyApplied = false;
 
         if (option.isLocked) {
-            amountToWithdraw = _checkLockAndApplyPenalty(
-                option,
-                userStake,
-                amountToWithdraw
-            );
+            amountToWithdraw = _checkLockAndApplyPenalty(option, userStake, amountToWithdraw);
             penaltyApplied = amountToWithdraw != amount;
         }
 
@@ -520,33 +381,19 @@ contract StakingContract is
 
         if (hookAddr != address(0)) {
             IStakingHooks(hookAddr).afterWithdraw(
-                msg.sender,
-                optionId,
-                amountToWithdraw,
-                penaltyApplied,
-                userStake.data
+                msg.sender, optionId, amountToWithdraw, penaltyApplied, userStake.data
             );
         }
 
         emit Withdraw(optionId, msg.sender, amountToWithdraw, penaltyApplied);
-        emit StakingOperations(
-            msg.sender,
-            optionId,
-            amountToWithdraw,
-            0,
-            OPERATION_WITHDRAW
-        );
+        emit StakingOperations(msg.sender, optionId, amountToWithdraw, 0, OPERATION_WITHDRAW);
     }
 
-    function _getWithdrawableAmount(
-        Option storage option,
-        Stake storage userStake
-    ) internal view returns (uint256) {
+    function _getWithdrawableAmount(Option storage option, Stake storage userStake) internal view returns (uint256) {
         uint256 amountToWithdraw = userStake.amount;
 
         if (option.isLocked) {
-            uint256 lockEndTime = userStake.creationTime +
-                userStake.lockDuration;
+            uint256 lockEndTime = userStake.creationTime + userStake.lockDuration;
             if (block.timestamp < lockEndTime) {
                 return 0;
             }
@@ -554,32 +401,25 @@ contract StakingContract is
 
         if (option.hasLinearVesting) {
             uint256 vestedAmount = _getVestedAmount(option, userStake);
-            amountToWithdraw = amountToWithdraw > vestedAmount
-                ? vestedAmount
-                : amountToWithdraw;
+            amountToWithdraw = amountToWithdraw > vestedAmount ? vestedAmount : amountToWithdraw;
         }
 
         return amountToWithdraw;
     }
 
-    function _checkLockAndApplyPenalty(
-        Option storage option,
-        Stake storage userStake,
-        uint256 amountToWithdraw
-    ) internal returns (uint256) {
+    function _checkLockAndApplyPenalty(Option storage option, Stake storage userStake, uint256 amountToWithdraw)
+        internal
+        returns (uint256)
+    {
         uint256 lockEndTime = userStake.creationTime + userStake.lockDuration;
         if (block.timestamp < lockEndTime) revert WithdrawBeforeLockPeriod();
 
         if (option.hasEarlyExitPenalty) {
-            uint256 penaltyAmount = (amountToWithdraw *
-                option.penaltyPercentage) / 10000;
+            uint256 penaltyAmount = (amountToWithdraw * option.penaltyPercentage) / 10000;
             amountToWithdraw -= penaltyAmount;
 
             if (option.penaltyRecipient != address(0)) {
-                IERC20(option.token).safeTransfer(
-                    option.penaltyRecipient,
-                    penaltyAmount
-                );
+                IERC20(option.token).safeTransfer(option.penaltyRecipient, penaltyAmount);
             } else {
                 revert InsufficientBalanceForPenalty();
             }
@@ -588,10 +428,7 @@ contract StakingContract is
         return amountToWithdraw;
     }
 
-    function _getVestedAmount(
-        Option storage option,
-        Stake storage userStake
-    ) internal view returns (uint256) {
+    function _getVestedAmount(Option storage option, Stake storage userStake) internal view returns (uint256) {
         // Before cliff, nothing is vested
         if (block.timestamp < option.vestingStart + option.vestingCliff) {
             return 0;
@@ -605,15 +442,11 @@ contract StakingContract is
         // During vesting period, calculate linear vesting
         uint256 timeElapsed = block.timestamp - option.vestingStart;
         uint256 vestedAmount = (userStake.amount * timeElapsed) / option.vestingDuration;
-        
+
         return vestedAmount;
     }
 
-    function _transferTokens(
-        address token,
-        address to,
-        uint256 amount
-    ) internal {
+    function _transferTokens(address token, address to, uint256 amount) internal {
         IERC20(token).safeTransfer(to, amount);
     }
 
@@ -624,38 +457,43 @@ contract StakingContract is
     // Validation Functions
     function _validateBasicParams(Option calldata option) internal pure {
         if (option.minStakeAmount == 0) revert MinimumStakeGreaterThanZero();
-        if (
-            option.maxStakeAmount != 0 &&
-            option.maxStakeAmount < option.minStakeAmount
-        ) revert MaxStakeGreaterThanMinStake();
+        if (option.maxStakeAmount != 0 && option.maxStakeAmount < option.minStakeAmount) {
+            revert MaxStakeGreaterThanMinStake();
+        }
         // Add base multiplier validation
         if (option.baseMultiplier < 10000) revert BaseMultiplierTooLow(); // 10000 = 100%
     }
 
     function _validateLockingParams(Option calldata option) internal pure {
         if (option.isLocked) {
-            if (option.minLockDuration == 0)
+            if (option.minLockDuration == 0) {
                 revert LockedStakingMustHaveMinDuration();
-            if (option.maxLockDuration < option.minLockDuration)
+            }
+            if (option.maxLockDuration < option.minLockDuration) {
                 revert MaxDurationGreaterThanMinDuration();
+            }
 
             if (option.hasEarlyExitPenalty) {
-                if (
-                    option.penaltyPercentage == 0 ||
-                    option.penaltyPercentage > 10000
-                ) revert InvalidPenaltyPercentage();
-                if (option.penaltyRecipient == address(0))
+                if (option.penaltyPercentage == 0 || option.penaltyPercentage > 10000) {
+                    revert InvalidPenaltyPercentage();
+                }
+                if (option.penaltyRecipient == address(0)) {
                     revert PenaltyRecipientRequired();
+                }
             }
         } else {
-            if (option.minLockDuration != 0 || option.maxLockDuration != 0)
+            if (option.minLockDuration != 0 || option.maxLockDuration != 0) {
                 revert FlexibleStakingCannotHaveLockPeriods();
-            if (option.hasEarlyExitPenalty)
+            }
+            if (option.hasEarlyExitPenalty) {
                 revert FlexibleStakingCannotHavePenalty();
-            if (option.penaltyPercentage != 0)
+            }
+            if (option.penaltyPercentage != 0) {
                 revert NoPenaltiesAllowedForFlexibleStaking();
-            if (option.penaltyRecipient != address(0))
+            }
+            if (option.penaltyRecipient != address(0)) {
                 revert NoPenaltyRecipientForFlexibleStaking();
+            }
         }
     }
 
@@ -667,28 +505,31 @@ contract StakingContract is
             if (option.vestingDuration == 0) revert VestingMustHaveDuration();
             if (option.vestingStart == 0) revert VestingMustHaveStartTime();
             // Ensure vesting start is within reasonable bounds (e.g., 7 days)
-            if (option.vestingStart > block.timestamp + 7 days)
+            if (option.vestingStart > block.timestamp + 7 days) {
                 revert VestingStartTooFarInFuture();
-            if (option.vestingCliff > option.vestingDuration)
+            }
+            if (option.vestingCliff > option.vestingDuration) {
                 revert CliffMustBeLessThanOrEqualToVestingDuration();
-            if (option.vestingDuration > option.maxLockDuration)
+            }
+            if (option.vestingDuration > option.maxLockDuration) {
                 revert VestingDurationExceedsLockDuration();
+            }
         } else {
-            if (
-                option.vestingStart != 0 ||
-                option.vestingCliff != 0 ||
-                option.vestingDuration != 0
-            ) revert NoVestingSettingsAllowed();
+            if (option.vestingStart != 0 || option.vestingCliff != 0 || option.vestingDuration != 0) {
+                revert NoVestingSettingsAllowed();
+            }
         }
     }
 
     function _validateMultiplierParams(Option calldata option) internal pure {
         if (option.hasTimeBasedMultiplier) {
-            if (option.multiplierIncreaseRate == 0)
+            if (option.multiplierIncreaseRate == 0) {
                 revert MultiplierRateMustBeGreaterThanZero();
+            }
         } else {
-            if (option.multiplierIncreaseRate != 0)
+            if (option.multiplierIncreaseRate != 0) {
                 revert NoMultiplierIncreaseRateIfDisabled();
+            }
         }
     }
 
@@ -697,47 +538,32 @@ contract StakingContract is
      * @param fromOptionId Source staking option ID
      * @param toOptionId Destination staking option ID
      */
-    function migrateStake(
-        uint256 fromOptionId,
-        uint256 toOptionId
-    ) external nonReentrantHooks whenNotEmergencyPaused {
+    function migrateStake(uint256 fromOptionId, uint256 toOptionId) external nonReentrantHooks whenNotEmergencyPaused {
         _migrateStake(fromOptionId, toOptionId);
     }
 
-    function _migrateStake(
-        uint256 fromOptionId,
-        uint256 toOptionId
-    ) internal returns (uint256 migratedAmount) {
+    function _migrateStake(uint256 fromOptionId, uint256 toOptionId) internal returns (uint256 migratedAmount) {
         Option storage fromOption = options[fromOptionId];
         Option storage toOption = options[toOptionId];
         Stake storage fromStake = stakes[fromOptionId][msg.sender];
-        
+
         if (fromStake.amount == 0) revert StakeNotFound();
         if (fromOption.isLocked) revert CannotMigrateLockedStake();
         if (toOption.paused) revert StakingPaused();
-        
+
         if (
-            fromStake.amount < toOption.minStakeAmount ||
-            (toOption.maxStakeAmount > 0 && fromStake.amount > toOption.maxStakeAmount)
+            fromStake.amount < toOption.minStakeAmount
+                || (toOption.maxStakeAmount > 0 && fromStake.amount > toOption.maxStakeAmount)
         ) revert InvalidStakeAmount();
 
         if (fromOption.hookContract != address(0)) {
             IStakingHooks(fromOption.hookContract).beforeWithdraw(
-                msg.sender,
-                fromOptionId,
-                fromStake.amount,
-                fromStake.data
+                msg.sender, fromOptionId, fromStake.amount, fromStake.data
             );
         }
-        
+
         if (toOption.hookContract != address(0)) {
-            IStakingHooks(toOption.hookContract).beforeStake(
-                msg.sender,
-                toOptionId,
-                fromStake.amount,
-                0,
-                ""
-            );
+            IStakingHooks(toOption.hookContract).beforeStake(msg.sender, toOptionId, fromStake.amount, 0, "");
         }
 
         migratedAmount = fromStake.amount;
@@ -754,22 +580,12 @@ contract StakingContract is
 
         if (fromOption.hookContract != address(0)) {
             IStakingHooks(fromOption.hookContract).afterWithdraw(
-                msg.sender,
-                fromOptionId,
-                migratedAmount,
-                false,
-                fromStake.data
+                msg.sender, fromOptionId, migratedAmount, false, fromStake.data
             );
         }
-        
+
         if (toOption.hookContract != address(0)) {
-            IStakingHooks(toOption.hookContract).afterStake(
-                msg.sender,
-                toOptionId,
-                migratedAmount,
-                0,
-                ""
-            );
+            IStakingHooks(toOption.hookContract).afterStake(msg.sender, toOptionId, migratedAmount, 0, "");
         }
 
         emit StakeMigrated(fromOptionId, toOptionId, msg.sender, migratedAmount);
@@ -790,9 +606,8 @@ contract StakingContract is
         bytes[] calldata datas
     ) external nonReentrantHooks whenNotEmergencyPaused {
         if (
-            optionIds.length != amounts.length ||
-            optionIds.length != lockDurations.length ||
-            optionIds.length != datas.length
+            optionIds.length != amounts.length || optionIds.length != lockDurations.length
+                || optionIds.length != datas.length
         ) revert ArrayLengthMismatch();
 
         for (uint256 i = 0; i < optionIds.length; i++) {
@@ -807,10 +622,11 @@ contract StakingContract is
      * @param optionIds Array of staking option IDs
      * @param additionalLockDurations Array of additional lock durations
      */
-    function batchExtendStake(
-        uint256[] calldata optionIds,
-        uint256[] calldata additionalLockDurations
-    ) external nonReentrantHooks whenNotEmergencyPaused {
+    function batchExtendStake(uint256[] calldata optionIds, uint256[] calldata additionalLockDurations)
+        external
+        nonReentrantHooks
+        whenNotEmergencyPaused
+    {
         if (optionIds.length != additionalLockDurations.length) revert ArrayLengthMismatch();
 
         for (uint256 i = 0; i < optionIds.length; i++) {
@@ -824,9 +640,7 @@ contract StakingContract is
      * @notice Batch withdraw
      * @param optionIds Array of staking option IDs
      */
-    function batchWithdraw(
-        uint256[] calldata optionIds
-    ) external nonReentrantHooks whenNotEmergencyPaused {
+    function batchWithdraw(uint256[] calldata optionIds) external nonReentrantHooks whenNotEmergencyPaused {
         uint256[] memory withdrawnAmounts = new uint256[](optionIds.length);
         bool[] memory penaltiesApplied = new bool[](optionIds.length);
 
@@ -842,10 +656,11 @@ contract StakingContract is
      * @param fromOptionIds Array of source staking option IDs
      * @param toOptionIds Array of destination staking option IDs
      */
-    function batchMigrateStake(
-        uint256[] calldata fromOptionIds,
-        uint256[] calldata toOptionIds
-    ) external nonReentrantHooks whenNotEmergencyPaused {
+    function batchMigrateStake(uint256[] calldata fromOptionIds, uint256[] calldata toOptionIds)
+        external
+        nonReentrantHooks
+        whenNotEmergencyPaused
+    {
         if (fromOptionIds.length != toOptionIds.length) revert ArrayLengthMismatch();
 
         uint256[] memory migratedAmounts = new uint256[](fromOptionIds.length);

@@ -15,13 +15,8 @@ interface IStakingHooks {
      * @param lockDuration Duration of the stake lock
      * @param data Additional data for the stake
      */
-    function beforeStake(
-        address user,
-        uint256 optionId,
-        uint256 amount,
-        uint256 lockDuration,
-        bytes calldata data
-    ) external;
+    function beforeStake(address user, uint256 optionId, uint256 amount, uint256 lockDuration, bytes calldata data)
+        external;
 
     /**
      * @notice Called after a stake is created
@@ -31,13 +26,8 @@ interface IStakingHooks {
      * @param lockDuration Duration of the stake lock
      * @param data Additional data for the stake
      */
-    function afterStake(
-        address user,
-        uint256 optionId,
-        uint256 amount,
-        uint256 lockDuration,
-        bytes calldata data
-    ) external;
+    function afterStake(address user, uint256 optionId, uint256 amount, uint256 lockDuration, bytes calldata data)
+        external;
 
     /**
      * @notice Called before a withdrawal
@@ -46,12 +36,7 @@ interface IStakingHooks {
      * @param amount Amount being withdrawn
      * @param data Additional data from the stake
      */
-    function beforeWithdraw(
-        address user,
-        uint256 optionId,
-        uint256 amount,
-        bytes calldata data
-    ) external;
+    function beforeWithdraw(address user, uint256 optionId, uint256 amount, bytes calldata data) external;
 
     /**
      * @notice Called after a withdrawal
@@ -61,13 +46,8 @@ interface IStakingHooks {
      * @param penaltyApplied Whether a penalty was applied
      * @param data Additional data from the stake
      */
-    function afterWithdraw(
-        address user,
-        uint256 optionId,
-        uint256 amount,
-        bool penaltyApplied,
-        bytes calldata data
-    ) external;
+    function afterWithdraw(address user, uint256 optionId, uint256 amount, bool penaltyApplied, bytes calldata data)
+        external;
 
     /**
      * @notice Called before extending a stake
@@ -76,12 +56,7 @@ interface IStakingHooks {
      * @param newDuration New total duration
      * @param data Additional data from the stake
      */
-    function beforeExtend(
-        address user,
-        uint256 optionId,
-        uint256 newDuration,
-        bytes calldata data
-    ) external;
+    function beforeExtend(address user, uint256 optionId, uint256 newDuration, bytes calldata data) external;
 
     /**
      * @notice Called after extending a stake
@@ -90,10 +65,5 @@ interface IStakingHooks {
      * @param newDuration New total duration
      * @param data Additional data from the stake
      */
-    function afterExtend(
-        address user,
-        uint256 optionId,
-        uint256 newDuration,
-        bytes calldata data
-    ) external;
-} 
+    function afterExtend(address user, uint256 optionId, uint256 newDuration, bytes calldata data) external;
+}

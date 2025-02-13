@@ -11,7 +11,7 @@ contract FlexStakeTest is Test {
     StakingContract public staking;
     MockToken public token;
     MockStakingHook public hook;
-    
+
     address public owner;
     address public user1;
     address public user2;
@@ -25,7 +25,9 @@ contract FlexStakeTest is Test {
     uint256 public constant PENALTY_PERCENTAGE = 1000; // 10%
 
     event OptionCreated(uint256 indexed id, StakingContract.Option option);
-    event StakeCreated(uint256 indexed optionId, address indexed staker, uint256 amount, uint256 lockDuration, uint256 stakeId);
+    event StakeCreated(
+        uint256 indexed optionId, address indexed staker, uint256 amount, uint256 lockDuration, uint256 stakeId
+    );
     event StakeExtended(uint256 indexed optionId, address indexed staker, uint256 newLockDuration);
     event Withdraw(uint256 indexed optionId, address indexed staker, uint256 amount, bool penaltyApplied);
 
@@ -36,25 +38,19 @@ contract FlexStakeTest is Test {
         penaltyRecipient = makeAddr("penaltyRecipient");
 
         vm.startPrank(owner);
-        
+
         // Deploy implementation
         StakingContract implementation = new StakingContract();
-        
+
         // Create initialization data
-        bytes memory initData = abi.encodeWithSelector(
-            StakingContract.initialize.selector,
-            owner
-        );
-        
+        bytes memory initData = abi.encodeWithSelector(StakingContract.initialize.selector, owner);
+
         // Deploy proxy
-        MockProxy proxy = new MockProxy(
-            address(implementation),
-            initData
-        );
-        
+        MockProxy proxy = new MockProxy(address(implementation), initData);
+
         // Set up the main contract reference
         staking = StakingContract(address(proxy));
-        
+
         token = new MockToken();
         hook = new MockStakingHook();
 
@@ -66,12 +62,12 @@ contract FlexStakeTest is Test {
 
         vm.prank(user1);
         token.approve(address(staking), type(uint256).max);
-        
+
         vm.prank(user2);
         token.approve(address(staking), type(uint256).max);
     }
 
-    function test_Initialize() view public {
+    function test_Initialize() public view {
         assertEq(staking.owner(), owner);
         assertEq(staking.nextOptionId(), 1);
         assertEq(staking.emergencyPaused(), false);
@@ -79,7 +75,7 @@ contract FlexStakeTest is Test {
 
     function test_CreateBasicOption() public {
         vm.startPrank(owner);
-        
+
         StakingContract.Option memory option = StakingContract.Option({
             isLocked: true,
             minLockDuration: MIN_LOCK,
@@ -104,22 +100,22 @@ contract FlexStakeTest is Test {
 
         vm.expectEmit(true, true, true, true);
         emit OptionCreated(1, option);
-        
+
         uint256 optionId = staking.createOption(option);
         assertEq(optionId, 1);
 
-        StakingContract.Option memory createdOption = staking.getOption(optionId);    
+        StakingContract.Option memory createdOption = staking.getOption(optionId);
         assertEq(createdOption.isLocked, option.isLocked);
         assertEq(createdOption.minLockDuration, option.minLockDuration);
         assertEq(createdOption.maxLockDuration, option.maxLockDuration);
         assertEq(createdOption.token, option.token);
-        
+
         vm.stopPrank();
     }
 
     function test_CreateOptionWithHooks() public {
         vm.startPrank(owner);
-        
+
         StakingContract.Option memory option = StakingContract.Option({
             isLocked: true,
             minLockDuration: MIN_LOCK,
@@ -144,7 +140,7 @@ contract FlexStakeTest is Test {
 
         uint256 optionId = staking.createOption(option);
         assertEq(optionId, 1);
-        
+
         vm.stopPrank();
     }
 
@@ -160,7 +156,7 @@ contract FlexStakeTest is Test {
 
         vm.expectEmit(true, true, true, true);
         emit StakeCreated(optionId, user1, stakeAmount, lockDuration, 2);
-        
+
         staking.stake(optionId, stakeAmount, lockDuration, "");
 
         // Verify stake
@@ -171,7 +167,7 @@ contract FlexStakeTest is Test {
         StakingContract.Stake memory hookStake = staking.getStake(optionId, user1);
         assertEq(hookStake.amount, stakeAmount);
         assertEq(hookStake.data, "");
-        
+
         vm.stopPrank();
     }
 
@@ -193,7 +189,7 @@ contract FlexStakeTest is Test {
         StakingContract.Stake memory hookStake = staking.getStake(optionId, user1);
         assertEq(hookStake.amount, stakeAmount);
         assertEq(hookStake.data, data);
-        
+
         vm.stopPrank();
     }
 
@@ -211,13 +207,13 @@ contract FlexStakeTest is Test {
         uint256 additionalDuration = 30 days;
         vm.expectEmit(true, true, true, true);
         emit StakeExtended(optionId, user1, initialLockDuration + additionalDuration);
-        
+
         staking.extendStake(optionId, additionalDuration);
 
         StakingContract.Stake memory stake = staking.getStake(optionId, user1);
         assertEq(stake.lockDuration, initialLockDuration + additionalDuration);
-        assertEq(stake.amount, stakeAmount);  // Amount should remain unchanged
-        
+        assertEq(stake.amount, stakeAmount); // Amount should remain unchanged
+
         vm.stopPrank();
     }
 
@@ -236,14 +232,14 @@ contract FlexStakeTest is Test {
 
         uint256 balanceBefore = token.balanceOf(user1);
         uint256 expectedAmount = stakeAmount - ((stakeAmount * PENALTY_PERCENTAGE) / 10000); // Account for 10% penalty
-        
+
         staking.withdraw(optionId);
 
         assertEq(token.balanceOf(user1), balanceBefore + expectedAmount);
-        
+
         StakingContract.Stake memory stake = staking.getStake(optionId, user1);
         assertEq(stake.amount, 0);
-        
+
         vm.stopPrank();
     }
 
@@ -260,7 +256,7 @@ contract FlexStakeTest is Test {
         // Try to withdraw before lock period ends
         vm.expectRevert(Error.WithdrawBeforeLockPeriod.selector);
         staking.withdraw(optionId);
-        
+
         vm.stopPrank();
     }
 
@@ -294,7 +290,7 @@ contract FlexStakeTest is Test {
 
     function test_CreateOptionWithVesting() public {
         vm.startPrank(owner);
-        
+
         StakingContract.Option memory option = StakingContract.Option({
             isLocked: true,
             minLockDuration: MIN_LOCK,
@@ -319,13 +315,13 @@ contract FlexStakeTest is Test {
 
         uint256 optionId = staking.createOption(option);
         assertEq(optionId, 1);
-        
+
         vm.stopPrank();
     }
 
     function test_CreateOptionWithTimeMultiplier() public {
         vm.startPrank(owner);
-        
+
         StakingContract.Option memory option = StakingContract.Option({
             isLocked: true,
             minLockDuration: MIN_LOCK,
@@ -350,7 +346,7 @@ contract FlexStakeTest is Test {
 
         uint256 optionId = staking.createOption(option);
         assertEq(optionId, 1);
-        
+
         vm.stopPrank();
     }
 
@@ -394,7 +390,7 @@ contract FlexStakeTest is Test {
     //     // Set initial block timestamp
     //     vm.warp(1000);
     //     uint256 startTime = block.timestamp;
-        
+
     //     vm.startPrank(owner);
     //     StakingContract.Option memory option = StakingContract.Option({
     //         isLocked: true,
@@ -422,7 +418,7 @@ contract FlexStakeTest is Test {
 
     //     vm.startPrank(user1);
     //     uint256 stakeAmount = 500 ether;
-        
+
     //     // Initial stake
     //     staking.stake(optionId, stakeAmount, 180 days, "");
 
@@ -435,7 +431,7 @@ contract FlexStakeTest is Test {
     //     vm.warp(startTime + 90 days);
     //     uint256 expectedVested = (stakeAmount * 90 days) / 180 days;
     //     uint256 withdrawAmount = expectedVested / 2; // Withdraw half of vested amount
-        
+
     //     uint256 balanceBefore = token.balanceOf(user1);
     //     staking.withdrawPartial(optionId, withdrawAmount);
     //     assertEq(token.balanceOf(user1) - balanceBefore, withdrawAmount);
@@ -449,7 +445,7 @@ contract FlexStakeTest is Test {
     //     balanceBefore = token.balanceOf(user1);
     //     staking.withdraw(optionId);
     //     assertEq(token.balanceOf(user1) - balanceBefore, stakeAmount - withdrawAmount);
-        
+
     //     vm.stopPrank();
     // }
 
@@ -464,7 +460,7 @@ contract FlexStakeTest is Test {
         uint256[] memory amounts = new uint256[](2);
         amounts[0] = 300 ether;
         amounts[1] = 400 ether;
-        
+
         uint256[] memory lockDurations = new uint256[](2);
         lockDurations[0] = 30 days;
         lockDurations[1] = 60 days;
@@ -600,4 +596,4 @@ contract FlexStakeTest is Test {
 
         return staking.createOption(option);
     }
-} 
+}
