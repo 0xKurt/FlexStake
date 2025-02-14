@@ -8,7 +8,22 @@ remappings = [
 ]
 via_ir = true
 optimizer = true
-optimizer_runs = 1000
-solc = "0.8.20"
+optimizer_runs = 10000
+solc = "0.8.22"
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
+
+[rpc_endpoints]
+sepolia = "${SEPOLIA_RPC}"
+arbitrum = "${ARBITRUM_RPC}"
+optimism = "${OPTIMISM_RPC}"
+
+# Fallback Public RPCs
+sepolia_public = "https://rpc.sepolia.org"
+arbitrum_public = "https://arb1.arbitrum.io/rpc"
+optimism_public = "https://mainnet.optimism.io"
+
+[etherscan]
+sepolia = { key = "${SEPOLIA_ETHERSCAN_API_KEY}" }
+arbitrum = { key = "${ARBITRUM_ETHERSCAN_API_KEY}" }
+optimism = { key = "${OPTIMISM_ETHERSCAN_API_KEY}" }

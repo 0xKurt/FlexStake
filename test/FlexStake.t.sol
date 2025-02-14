@@ -31,23 +31,10 @@ contract FlexStakeTest is Test {
 
     event OptionCreated(uint256 indexed id, FlexStake.Option option);
     event StakeCreated(
-        uint256 indexed optionId,
-        address indexed staker,
-        uint256 amount,
-        uint256 lockDuration,
-        uint256 stakeId
+        uint256 indexed optionId, address indexed staker, uint256 amount, uint256 lockDuration, uint256 stakeId
     );
-    event StakeExtended(
-        uint256 indexed optionId,
-        address indexed staker,
-        uint256 newLockDuration
-    );
-    event Withdraw(
-        uint256 indexed optionId,
-        address indexed staker,
-        uint256 amount,
-        bool penaltyApplied
-    );
+    event StakeExtended(uint256 indexed optionId, address indexed staker, uint256 newLockDuration);
+    event Withdraw(uint256 indexed optionId, address indexed staker, uint256 amount, bool penaltyApplied);
 
     function setUp() public {
         owner = makeAddr("owner");
@@ -61,10 +48,7 @@ contract FlexStakeTest is Test {
         FlexStake implementation = new FlexStake();
 
         // Create initialization data
-        bytes memory initData = abi.encodeWithSelector(
-            FlexStake.initialize.selector,
-            owner
-        );
+        bytes memory initData = abi.encodeWithSelector(FlexStake.initialize.selector, owner);
 
         // Deploy proxy
         MockProxy proxy = new MockProxy(address(implementation), initData);
@@ -225,11 +209,7 @@ contract FlexStakeTest is Test {
         // Extend stake
         uint256 additionalDuration = 30 days;
         vm.expectEmit(true, true, true, true);
-        emit StakeExtended(
-            optionId,
-            user1,
-            initialLockDuration + additionalDuration
-        );
+        emit StakeExtended(optionId, user1, initialLockDuration + additionalDuration);
 
         staking.extendStake(optionId, additionalDuration);
 
@@ -254,8 +234,7 @@ contract FlexStakeTest is Test {
         vm.warp(block.timestamp + lockDuration + 1);
 
         uint256 balanceBefore = token.balanceOf(user1);
-        uint256 expectedAmount = stakeAmount -
-            ((stakeAmount * PENALTY_PERCENTAGE) / 10000); // Account for 10% penalty
+        uint256 expectedAmount = stakeAmount - ((stakeAmount * PENALTY_PERCENTAGE) / 10000); // Account for 10% penalty
 
         staking.withdraw(optionId);
 
@@ -517,6 +496,8 @@ contract FlexStakeTest is Test {
     }
 
     function testTimeBasedMultiplier() public {
+        vm.startPrank(owner);
+        
         FlexStake.Option memory option = FlexStake.Option({
             id: 0,
             isLocked: false,
@@ -532,17 +513,16 @@ contract FlexStakeTest is Test {
             vestingCliff: 0,
             vestingDuration: 0,
             hasTimeBasedMultiplier: true,
-            multiplierIncreaseRate: MULTIPLIER_RATE,
+            multiplierIncreaseRate: 1e16, // 1% with 18 decimals (0.01 * 1e18)
             token: address(token),
             requiresData: false,
             hookContract: address(0)
         });
 
         uint256 optionId = staking.createOption(option);
+        vm.stopPrank();
 
-        // Test staking and multiplier calculation
         vm.startPrank(user1);
-        token.approve(address(staking), MIN_STAKE);
         staking.stake(optionId, MIN_STAKE, 0, "");
 
         // Fast forward 10 days
@@ -550,8 +530,8 @@ contract FlexStakeTest is Test {
 
         // Check multiplier effect
         uint256 stakedValue = staking.getStakedValue(optionId, user1);
-        // Expected: MIN_STAKE * (1 + (10 days * 1% per day)) = MIN_STAKE * 1.1
-        assertEq(stakedValue, (MIN_STAKE * 11000) / 10000);
+        // Expected: MIN_STAKE * (1 + (10 days * 1%)) = MIN_STAKE * 1.1
+        assertEq(stakedValue, (MIN_STAKE * 11) / 10);
 
         vm.stopPrank();
     }

@@ -17,7 +17,8 @@ interface IStakingHooks is IERC165 {
      * @param duration Duration of the stake lock
      * @param data Additional data for the stake
      */
-    function beforeStake(address user, uint256 optionId, uint256 amount, uint256 duration, bytes calldata data) external;
+    function beforeStake(address user, uint256 optionId, uint256 amount, uint256 duration, bytes calldata data)
+        external;
 
     /**
      * @notice Called after a stake is created
@@ -27,7 +28,8 @@ interface IStakingHooks is IERC165 {
      * @param duration Duration of the stake lock
      * @param data Additional data for the stake
      */
-    function afterStake(address user, uint256 optionId, uint256 amount, uint256 duration, bytes calldata data) external;
+    function afterStake(address user, uint256 optionId, uint256 amount, uint256 duration, bytes calldata data)
+        external;
 
     /**
      * @notice Called before a withdrawal

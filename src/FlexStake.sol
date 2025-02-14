@@ -99,7 +99,9 @@ contract FlexStake is Error, OwnableUpgradeable, ReentrancyGuardUpgradeable {
         _;
     }
 
-    /*** Initialization Functions ***/
+    /**
+     * Initialization Functions **
+     */
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -117,7 +119,9 @@ contract FlexStake is Error, OwnableUpgradeable, ReentrancyGuardUpgradeable {
         emergencyPaused = false;
     }
 
-    /*** View Functions ***/
+    /**
+     * View Functions **
+     */
 
     /**
      * @notice Checks if a stake requires additional data
@@ -166,11 +170,11 @@ contract FlexStake is Error, OwnableUpgradeable, ReentrancyGuardUpgradeable {
     function getStakedValue(uint256 optionId, address user) external view returns (uint256) {
         Stake storage userStake = stakes[optionId][user];
         Option storage option = options[optionId];
-        
+
         if (userStake.amount == 0) return 0;
 
         uint256 value = userStake.amount;
-        
+
         // Apply time-based multiplier if enabled
         if (option.hasTimeBasedMultiplier) {
             uint256 timeStaked = block.timestamp - userStake.creationTime;
@@ -180,11 +184,13 @@ contract FlexStake is Error, OwnableUpgradeable, ReentrancyGuardUpgradeable {
             uint256 timeMultiplier = (daysStaked * option.multiplierIncreaseRate) / 1e18;
             value = value * (1e18 + timeMultiplier) / 1e18;
         }
-        
+
         return value;
     }
 
-    /*** Admin Functions ***/
+    /**
+     * Admin Functions **
+     */
 
     /**
      * @notice Emergency pause all contract operations
@@ -253,7 +259,9 @@ contract FlexStake is Error, OwnableUpgradeable, ReentrancyGuardUpgradeable {
         emit OptionPausedAndReleased(optionId);
     }
 
-    /*** Core Staking Functions ***/
+    /**
+     * Core Staking Functions **
+     */
 
     /**
      * @notice Creates a new stake for the caller
@@ -545,7 +553,9 @@ contract FlexStake is Error, OwnableUpgradeable, ReentrancyGuardUpgradeable {
         delete stakes[optionId][staker];
     }
 
-    /*** Stake Migration Functions ***/
+    /**
+     * Stake Migration Functions **
+     */
 
     /**
      * @notice Migrates a stake from one option to another
@@ -607,7 +617,9 @@ contract FlexStake is Error, OwnableUpgradeable, ReentrancyGuardUpgradeable {
         return migratedAmount;
     }
 
-    /*** Batch Functions ***/
+    /**
+     * Batch Functions **
+     */
 
     /**
      * @notice Creates multiple stakes in a single transaction
@@ -693,8 +705,9 @@ contract FlexStake is Error, OwnableUpgradeable, ReentrancyGuardUpgradeable {
         emit BatchStakeMigrated(fromOptionIds, toOptionIds, msg.sender, migratedAmounts);
     }
 
-    /*** Internal Functions ***/
-
+    /**
+     * Internal Functions **
+     */
     function _validateHookContract(address hookContract) internal view {
         if (hookContract == address(0)) revert HookContractZeroAddress();
 
@@ -706,10 +719,13 @@ contract FlexStake is Error, OwnableUpgradeable, ReentrancyGuardUpgradeable {
         }
     }
 
-    /*** Internal Helper Functions ***/
+    /**
+     * Internal Helper Functions **
+     */
 
-    /*** Internal Validation Functions ***/
-
+    /**
+     * Internal Validation Functions **
+     */
     function _validateBasicParams(Option calldata option) internal pure {
         if (option.minStakeAmount == 0) revert MinimumStakeGreaterThanZero();
         if (option.maxStakeAmount != 0 && option.maxStakeAmount < option.minStakeAmount) {
