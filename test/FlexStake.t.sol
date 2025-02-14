@@ -497,7 +497,7 @@ contract FlexStakeTest is Test {
 
     function testTimeBasedMultiplier() public {
         vm.startPrank(owner);
-        
+
         FlexStake.Option memory option = FlexStake.Option({
             id: 0,
             isLocked: false,
