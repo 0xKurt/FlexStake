@@ -727,7 +727,12 @@ contract FlexStake is Error, OwnableUpgradeable, ReentrancyGuardUpgradeable {
      * Internal Validation Functions **
      */
     function _validateBasicParams(Option calldata option) internal pure {
-        if (option.minStakeAmount == 0) revert MinimumStakeGreaterThanZero();
+        // Only require minimum stake amount for locked staking
+        if (option.isLocked && option.minStakeAmount == 0) {
+            revert MinimumStakeGreaterThanZero();
+        }
+
+        // If max stake is set, it must be greater than min stake
         if (option.maxStakeAmount != 0 && option.maxStakeAmount < option.minStakeAmount) {
             revert MaxStakeGreaterThanMinStake();
         }
@@ -739,7 +744,7 @@ contract FlexStake is Error, OwnableUpgradeable, ReentrancyGuardUpgradeable {
                 revert LockedStakingMustHaveMinDuration();
             }
             if (option.maxLockDuration < option.minLockDuration) {
-                revert MaxDurationGreaterThanMinDuration();
+                revert MaxDurationLessThanMinDuration();
             }
 
             if (option.hasEarlyExitPenalty) {

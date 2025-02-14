@@ -11,7 +11,11 @@ contract DeployScript is Script {
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         address deployerAddress = vm.addr(deployerPrivateKey);
-
+        
+        // Get current nonce
+        uint64 nonce = vm.getNonce(deployerAddress);
+        console.log("Starting deployment with nonce:", nonce);
+        
         vm.startBroadcast(deployerPrivateKey);
 
         // Deploy implementation
@@ -27,8 +31,11 @@ contract DeployScript is Script {
         console.log("Initialization data prepared for owner:", deployerAddress);
 
         // Deploy proxy
-        TransparentUpgradeableProxy proxy =
-            new TransparentUpgradeableProxy(address(implementation), address(proxyAdmin), initData);
+        TransparentUpgradeableProxy proxy = new TransparentUpgradeableProxy(
+            address(implementation),
+            address(proxyAdmin),
+            initData
+        );
         console.log("Proxy contract deployed at:", address(proxy));
         console.log("To interact with the contract, use this address:", address(proxy));
 
@@ -39,5 +46,6 @@ contract DeployScript is Script {
         console.log("Implementation:", address(implementation));
         console.log("Proxy:", address(proxy));
         console.log("ProxyAdmin:", address(proxyAdmin));
+        console.log("Final nonce:", vm.getNonce(deployerAddress));
     }
 }

@@ -6,7 +6,7 @@ contract Error {
     error MinimumStakeGreaterThanZero();
     error MaxStakeGreaterThanMinStake();
     error LockedStakingMustHaveMinDuration();
-    error MaxDurationGreaterThanMinDuration();
+    error MaxDurationLessThanMinDuration();
     error InvalidPenaltyPercentage();
     error PenaltyRecipientRequired();
     error FlexibleStakingCannotHaveLockPeriods();
