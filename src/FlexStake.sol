@@ -5,7 +5,7 @@ import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
-import "./interfaces/IStakingHooks.sol";
+import "./hooks/IStakingHooks.sol";
 import "./errors/Error.sol";
 
 /**
@@ -15,10 +15,11 @@ import "./errors/Error.sol";
  * @dev This contract allows creation and management of different staking options with customizable parameters
  * @custom:security-contact security@flexstake.example.com
  */
-contract StakingContract is Error, OwnableUpgradeable, ReentrancyGuardUpgradeable {
+contract FlexStake is Error, OwnableUpgradeable, ReentrancyGuardUpgradeable {
     using SafeERC20 for IERC20;
 
     struct Option {
+        uint256 id;
         bool isLocked;
         uint256 minLockDuration;
         uint256 maxLockDuration;
@@ -35,7 +36,6 @@ contract StakingContract is Error, OwnableUpgradeable, ReentrancyGuardUpgradeabl
         bool hasTimeBasedMultiplier;
         uint256 multiplierIncreaseRate;
         address token;
-        bool paused;
         bool requiresData;
         address hookContract;
     }
@@ -50,6 +50,8 @@ contract StakingContract is Error, OwnableUpgradeable, ReentrancyGuardUpgradeabl
 
     mapping(uint256 => Option) public options;
     mapping(uint256 => mapping(address => Stake)) public stakes;
+    mapping(uint256 => bool) public pausedOptions;
+    mapping(uint256 => bool) public releasedOptions;
     uint256 public nextOptionId;
 
     // Events
@@ -72,6 +74,7 @@ contract StakingContract is Error, OwnableUpgradeable, ReentrancyGuardUpgradeabl
     event BatchStakeExtended(uint256[] optionIds, address indexed staker, uint256[] newLockDurations);
     event BatchWithdraw(uint256[] optionIds, address indexed staker, uint256[] amounts, bool[] penaltiesApplied);
     event BatchStakeMigrated(uint256[] fromOptionIds, uint256[] toOptionIds, address indexed staker, uint256[] amounts);
+    event OptionPausedAndReleased(uint256 indexed optionId);
 
     // State variables for emergency pause
     bool public emergencyPaused;
@@ -130,7 +133,7 @@ contract StakingContract is Error, OwnableUpgradeable, ReentrancyGuardUpgradeabl
         emergencyPaused = _paused;
     }
 
-    function _validateHookContract(address hookContract) internal {
+    function _validateHookContract(address hookContract) internal view {
         if (hookContract == address(0)) revert HookContractZeroAddress();
 
         // Check if contract exists
@@ -140,49 +143,56 @@ contract StakingContract is Error, OwnableUpgradeable, ReentrancyGuardUpgradeabl
         }
         if (codeSize == 0) revert InvalidHookContract();
 
-        // Optionally check interface implementation
-        try IStakingHooks(hookContract).beforeStake{gas: 50000}(address(0), 0, 0, 0, "") {
-            // Success is fine for mock
+        // Check if contract implements the expected interface
+        try IStakingHooks(hookContract).supportsInterface(type(IStakingHooks).interfaceId) returns (bool supported) {
+            if (!supported) revert InvalidHookContract();
         } catch {
-            // Failure is also fine
+            revert InvalidHookContract();
         }
     }
 
     // Option Management Functions
-    function createOption(Option calldata option) external onlyOwner returns (uint256) {
-        if (option.hookContract != address(0)) {
-            _validateHookContract(option.hookContract);
+    function createOption(Option calldata optionInput) external onlyOwner returns (uint256) {
+        if (optionInput.hookContract != address(0)) {
+            _validateHookContract(optionInput.hookContract);
         }
 
-        _validateBasicParams(option);
-        _validateLockingParams(option);
-        _validateVestingParams(option);
-        _validateMultiplierParams(option);
+        _validateBasicParams(optionInput);
+        _validateLockingParams(optionInput);
+        _validateVestingParams(optionInput);
+        _validateMultiplierParams(optionInput);
 
-        uint256 optionId;
-        unchecked {
-            optionId = nextOptionId++;
-        }
+        uint256 optionId = nextOptionId++;
 
-        options[optionId] = option;
-        options[optionId].paused = false; // Ensure new options start unpaused
+        Option memory option = optionInput; // Create memory copy
+        option.id = optionId; // Modify the copy
+        options[optionId] = option; // Store in storage
+        pausedOptions[optionId] = false;
 
-        emit OptionCreated(optionId, options[optionId]);
+        emit OptionCreated(optionId, option);
         return optionId;
     }
 
     function pauseStaking(uint256 optionId) external onlyOwner {
-        Option storage option = options[optionId];
-        if (option.paused) revert AlreadyPaused();
-        option.paused = true;
+        if (pausedOptions[optionId]) revert AlreadyPaused();
+        pausedOptions[optionId] = true;
         emit OptionPaused(optionId);
     }
 
     function unpauseStaking(uint256 optionId) external onlyOwner {
-        Option storage option = options[optionId];
-        if (!option.paused) revert NotPaused();
-        option.paused = false;
+        if (!pausedOptions[optionId]) revert NotPaused();
+        pausedOptions[optionId] = false;
         emit OptionUnpaused(optionId);
+    }
+
+    /**
+     * @notice Pauses staking and releases all locks for an option
+     * @param optionId The ID of the staking option
+     */
+    function pauseAndRelease(uint256 optionId) external onlyOwner {
+        pausedOptions[optionId] = true;
+        releasedOptions[optionId] = true;
+        emit OptionPausedAndReleased(optionId);
     }
 
     // Staking Functions
@@ -205,7 +215,7 @@ contract StakingContract is Error, OwnableUpgradeable, ReentrancyGuardUpgradeabl
             IStakingHooks(hookAddr).beforeStake(msg.sender, optionId, amount, lockDuration, data);
         }
 
-        if (option.paused) revert StakingPaused();
+        if (pausedOptions[optionId]) revert StakingPaused();
         if (amount < option.minStakeAmount || (option.maxStakeAmount > 0 && amount > option.maxStakeAmount)) {
             revert InvalidStakeAmount();
         }
@@ -256,7 +266,7 @@ contract StakingContract is Error, OwnableUpgradeable, ReentrancyGuardUpgradeabl
 
     function _extendStake(uint256 optionId, uint256 additionalLockDuration) internal {
         Option storage option = options[optionId];
-        if (option.paused) revert StakingPaused();
+        if (pausedOptions[optionId]) revert StakingPaused();
 
         Stake storage userStake = stakes[optionId][msg.sender];
         address hookAddr = option.hookContract;
@@ -412,9 +422,9 @@ contract StakingContract is Error, OwnableUpgradeable, ReentrancyGuardUpgradeabl
         returns (uint256)
     {
         uint256 lockEndTime = userStake.creationTime + userStake.lockDuration;
-        if (block.timestamp < lockEndTime) revert WithdrawBeforeLockPeriod();
+        if (block.timestamp < lockEndTime && !releasedOptions[option.id]) revert WithdrawBeforeLockPeriod();
 
-        if (option.hasEarlyExitPenalty) {
+        if (option.hasEarlyExitPenalty && !releasedOptions[option.id]) {
             uint256 penaltyAmount = (amountToWithdraw * option.penaltyPercentage) / 10000;
             amountToWithdraw -= penaltyAmount;
 
@@ -429,6 +439,10 @@ contract StakingContract is Error, OwnableUpgradeable, ReentrancyGuardUpgradeabl
     }
 
     function _getVestedAmount(Option storage option, Stake storage userStake) internal view returns (uint256) {
+        if (!option.hasLinearVesting) {
+            return userStake.amount;
+        }
+
         // Before cliff, nothing is vested
         if (block.timestamp < option.vestingStart + option.vestingCliff) {
             return 0;
@@ -441,9 +455,7 @@ contract StakingContract is Error, OwnableUpgradeable, ReentrancyGuardUpgradeabl
 
         // During vesting period, calculate linear vesting
         uint256 timeElapsed = block.timestamp - option.vestingStart;
-        uint256 vestedAmount = (userStake.amount * timeElapsed) / option.vestingDuration;
-
-        return vestedAmount;
+        return (userStake.amount * timeElapsed) / option.vestingDuration;
     }
 
     function _transferTokens(address token, address to, uint256 amount) internal {
@@ -549,7 +561,7 @@ contract StakingContract is Error, OwnableUpgradeable, ReentrancyGuardUpgradeabl
 
         if (fromStake.amount == 0) revert StakeNotFound();
         if (fromOption.isLocked) revert CannotMigrateLockedStake();
-        if (toOption.paused) revert StakingPaused();
+        if (pausedOptions[toOptionId]) revert StakingPaused();
 
         if (
             fromStake.amount < toOption.minStakeAmount

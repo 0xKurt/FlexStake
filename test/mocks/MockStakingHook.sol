@@ -1,55 +1,80 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "../../src/interfaces/IStakingHooks.sol";
+import "../../src/hooks/BaseStakingHooks.sol";
 
-contract MockStakingHook is IStakingHooks {
+contract MockStakingHook is BaseStakingHooks {
     bool public shouldRevert;
-
+    
     event BeforeStakeCalled(address user, uint256 optionId, uint256 amount, uint256 duration, bytes data);
     event AfterStakeCalled(address user, uint256 optionId, uint256 amount, uint256 duration, bytes data);
-    event BeforeWithdrawCalled(address user, uint256 optionId, uint256 amount, bytes data);
-    event AfterWithdrawCalled(address user, uint256 optionId, uint256 amount, bool penaltyApplied, bytes data);
-    event BeforeExtendCalled(address user, uint256 optionId, uint256 newDuration, bytes data);
-    event AfterExtendCalled(address user, uint256 optionId, uint256 newDuration, bytes data);
+    event BeforeUnstakeCalled(address user, uint256 stakeId, bytes data);
+    event AfterUnstakeCalled(address user, uint256 stakeId, bytes data);
 
     function setShouldRevert(bool _shouldRevert) external {
         shouldRevert = _shouldRevert;
     }
 
-    function beforeStake(address user, uint256 optionId, uint256 amount, uint256 duration, bytes calldata data)
-        external
-    {
-        if (shouldRevert) revert("Hook reverted");
+    function _beforeStake(
+        address user,
+        uint256 optionId,
+        uint256 amount,
+        uint256 duration,
+        bytes calldata data
+    ) internal override {
+        if (shouldRevert) revert("MockStakingHook: revert requested");
         emit BeforeStakeCalled(user, optionId, amount, duration, data);
     }
 
-    function afterStake(address user, uint256 optionId, uint256 amount, uint256 duration, bytes calldata data)
-        external
-    {
-        if (shouldRevert) revert("Hook reverted");
+    function _afterStake(
+        address user,
+        uint256 optionId,
+        uint256 amount,
+        uint256 duration,
+        bytes calldata data
+    ) internal override {
+        if (shouldRevert) revert("MockStakingHook: revert requested");
         emit AfterStakeCalled(user, optionId, amount, duration, data);
     }
 
-    function beforeWithdraw(address user, uint256 optionId, uint256 amount, bytes calldata data) external {
-        if (shouldRevert) revert("Hook reverted");
-        emit BeforeWithdrawCalled(user, optionId, amount, data);
+    function _beforeUnstake(
+        address user,
+        uint256 stakeId,
+        bytes calldata data
+    ) internal override {
+        if (shouldRevert) revert("MockStakingHook: revert requested");
+        emit BeforeUnstakeCalled(user, stakeId, data);
     }
 
-    function afterWithdraw(address user, uint256 optionId, uint256 amount, bool penaltyApplied, bytes calldata data)
-        external
-    {
-        if (shouldRevert) revert("Hook reverted");
-        emit AfterWithdrawCalled(user, optionId, amount, penaltyApplied, data);
+    function _afterUnstake(
+        address user,
+        uint256 stakeId,
+        bytes calldata data
+    ) internal override {
+        if (shouldRevert) revert("MockStakingHook: revert requested");
+        emit AfterUnstakeCalled(user, stakeId, data);
+    }
+
+    // Implement required functions from IStakingHooks
+    function beforeWithdraw(address user, uint256 optionId, uint256 amount, bytes calldata data) external {
+        // Mock implementation
+    }
+
+    function afterWithdraw(
+        address user,
+        uint256 optionId,
+        uint256 amount,
+        bool penaltyApplied,
+        bytes calldata data
+    ) external {
+        // Mock implementation
     }
 
     function beforeExtend(address user, uint256 optionId, uint256 newDuration, bytes calldata data) external {
-        if (shouldRevert) revert("Hook reverted");
-        emit BeforeExtendCalled(user, optionId, newDuration, data);
+        // Mock implementation
     }
 
     function afterExtend(address user, uint256 optionId, uint256 newDuration, bytes calldata data) external {
-        if (shouldRevert) revert("Hook reverted");
-        emit AfterExtendCalled(user, optionId, newDuration, data);
+        // Mock implementation
     }
-}
+} 

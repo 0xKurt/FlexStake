@@ -2,13 +2,14 @@
 pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
-import "../src/FlexStake.sol";
+import {FlexStake} from "../src/FlexStake.sol";
+import {Error} from "../src/errors/Error.sol";
 import "./mocks/MockToken.sol";
 import "./mocks/MockStakingHook.sol";
 import "./mocks/MockProxy.sol";
 
 contract FlexStakeTest is Test {
-    StakingContract public staking;
+    FlexStake public staking;
     MockToken public token;
     MockStakingHook public hook;
 
@@ -24,7 +25,7 @@ contract FlexStakeTest is Test {
     uint256 public constant MAX_LOCK = 365 days;
     uint256 public constant PENALTY_PERCENTAGE = 1000; // 10%
 
-    event OptionCreated(uint256 indexed id, StakingContract.Option option);
+    event OptionCreated(uint256 indexed id, FlexStake.Option option);
     event StakeCreated(
         uint256 indexed optionId, address indexed staker, uint256 amount, uint256 lockDuration, uint256 stakeId
     );
@@ -40,16 +41,16 @@ contract FlexStakeTest is Test {
         vm.startPrank(owner);
 
         // Deploy implementation
-        StakingContract implementation = new StakingContract();
+        FlexStake implementation = new FlexStake();
 
         // Create initialization data
-        bytes memory initData = abi.encodeWithSelector(StakingContract.initialize.selector, owner);
+        bytes memory initData = abi.encodeWithSelector(FlexStake.initialize.selector, owner);
 
         // Deploy proxy
         MockProxy proxy = new MockProxy(address(implementation), initData);
 
         // Set up the main contract reference
-        staking = StakingContract(address(proxy));
+        staking = FlexStake(address(proxy));
 
         token = new MockToken();
         hook = new MockStakingHook();
@@ -76,7 +77,8 @@ contract FlexStakeTest is Test {
     function test_CreateBasicOption() public {
         vm.startPrank(owner);
 
-        StakingContract.Option memory option = StakingContract.Option({
+        FlexStake.Option memory option = FlexStake.Option({
+            id: 1,
             isLocked: true,
             minLockDuration: MIN_LOCK,
             maxLockDuration: MAX_LOCK,
@@ -93,7 +95,6 @@ contract FlexStakeTest is Test {
             hasTimeBasedMultiplier: false,
             multiplierIncreaseRate: 0,
             token: address(token),
-            paused: false,
             requiresData: false,
             hookContract: address(0)
         });
@@ -104,7 +105,7 @@ contract FlexStakeTest is Test {
         uint256 optionId = staking.createOption(option);
         assertEq(optionId, 1);
 
-        StakingContract.Option memory createdOption = staking.getOption(optionId);
+        FlexStake.Option memory createdOption = staking.getOption(optionId);
         assertEq(createdOption.isLocked, option.isLocked);
         assertEq(createdOption.minLockDuration, option.minLockDuration);
         assertEq(createdOption.maxLockDuration, option.maxLockDuration);
@@ -116,7 +117,8 @@ contract FlexStakeTest is Test {
     function test_CreateOptionWithHooks() public {
         vm.startPrank(owner);
 
-        StakingContract.Option memory option = StakingContract.Option({
+        FlexStake.Option memory option = FlexStake.Option({
+            id: 1,
             isLocked: true,
             minLockDuration: MIN_LOCK,
             maxLockDuration: MAX_LOCK,
@@ -133,7 +135,6 @@ contract FlexStakeTest is Test {
             hasTimeBasedMultiplier: false,
             multiplierIncreaseRate: 0,
             token: address(token),
-            paused: false,
             requiresData: true,
             hookContract: address(hook)
         });
@@ -160,11 +161,11 @@ contract FlexStakeTest is Test {
         staking.stake(optionId, stakeAmount, lockDuration, "");
 
         // Verify stake
-        StakingContract.Stake memory initialStake = staking.getStake(optionId, user1);
+        FlexStake.Stake memory initialStake = staking.getStake(optionId, user1);
         assertEq(initialStake.amount, stakeAmount);
         assertEq(initialStake.lockDuration, lockDuration);
 
-        StakingContract.Stake memory hookStake = staking.getStake(optionId, user1);
+        FlexStake.Stake memory hookStake = staking.getStake(optionId, user1);
         assertEq(hookStake.amount, stakeAmount);
         assertEq(hookStake.data, "");
 
@@ -182,11 +183,11 @@ contract FlexStakeTest is Test {
 
         staking.stake(optionId, stakeAmount, lockDuration, data);
 
-        StakingContract.Stake memory initialStake = staking.getStake(optionId, user1);
+        FlexStake.Stake memory initialStake = staking.getStake(optionId, user1);
         assertEq(initialStake.amount, stakeAmount);
         assertEq(initialStake.data, data);
 
-        StakingContract.Stake memory hookStake = staking.getStake(optionId, user1);
+        FlexStake.Stake memory hookStake = staking.getStake(optionId, user1);
         assertEq(hookStake.amount, stakeAmount);
         assertEq(hookStake.data, data);
 
@@ -210,7 +211,7 @@ contract FlexStakeTest is Test {
 
         staking.extendStake(optionId, additionalDuration);
 
-        StakingContract.Stake memory stake = staking.getStake(optionId, user1);
+        FlexStake.Stake memory stake = staking.getStake(optionId, user1);
         assertEq(stake.lockDuration, initialLockDuration + additionalDuration);
         assertEq(stake.amount, stakeAmount); // Amount should remain unchanged
 
@@ -237,7 +238,7 @@ contract FlexStakeTest is Test {
 
         assertEq(token.balanceOf(user1), balanceBefore + expectedAmount);
 
-        StakingContract.Stake memory stake = staking.getStake(optionId, user1);
+        FlexStake.Stake memory stake = staking.getStake(optionId, user1);
         assertEq(stake.amount, 0);
 
         vm.stopPrank();
@@ -291,7 +292,8 @@ contract FlexStakeTest is Test {
     function test_CreateOptionWithVesting() public {
         vm.startPrank(owner);
 
-        StakingContract.Option memory option = StakingContract.Option({
+        FlexStake.Option memory option = FlexStake.Option({
+            id: 1,
             isLocked: true,
             minLockDuration: MIN_LOCK,
             maxLockDuration: MAX_LOCK,
@@ -308,7 +310,6 @@ contract FlexStakeTest is Test {
             hasTimeBasedMultiplier: false,
             multiplierIncreaseRate: 0,
             token: address(token),
-            paused: false,
             requiresData: false,
             hookContract: address(0)
         });
@@ -322,7 +323,8 @@ contract FlexStakeTest is Test {
     function test_CreateOptionWithTimeMultiplier() public {
         vm.startPrank(owner);
 
-        StakingContract.Option memory option = StakingContract.Option({
+        FlexStake.Option memory option = FlexStake.Option({
+            id: 1,
             isLocked: true,
             minLockDuration: MIN_LOCK,
             maxLockDuration: MAX_LOCK,
@@ -339,7 +341,6 @@ contract FlexStakeTest is Test {
             hasTimeBasedMultiplier: true,
             multiplierIncreaseRate: 100,
             token: address(token),
-            paused: false,
             requiresData: false,
             hookContract: address(0)
         });
@@ -352,7 +353,8 @@ contract FlexStakeTest is Test {
 
     function test_FlexibleStaking() public {
         vm.startPrank(owner);
-        StakingContract.Option memory option = StakingContract.Option({
+        FlexStake.Option memory option = FlexStake.Option({
+            id: 1,
             isLocked: false,
             minLockDuration: 0,
             maxLockDuration: 0,
@@ -369,7 +371,6 @@ contract FlexStakeTest is Test {
             hasTimeBasedMultiplier: false,
             multiplierIncreaseRate: 0,
             token: address(token),
-            paused: false,
             requiresData: false,
             hookContract: address(0)
         });
@@ -392,7 +393,7 @@ contract FlexStakeTest is Test {
     //     uint256 startTime = block.timestamp;
 
     //     vm.startPrank(owner);
-    //     StakingContract.Option memory option = StakingContract.Option({
+    //     FlexStake.Option memory option = FlexStake.Option({
     //         isLocked: true,
     //         minLockDuration: 180 days,
     //         maxLockDuration: 365 days,
@@ -437,7 +438,7 @@ contract FlexStakeTest is Test {
     //     assertEq(token.balanceOf(user1) - balanceBefore, withdrawAmount);
 
     //     // Verify remaining stake
-    //     StakingContract.Stake memory stake = staking.getStake(optionId, user1);
+    //     FlexStake.Stake memory stake = staking.getStake(optionId, user1);
     //     assertEq(stake.amount, stakeAmount - withdrawAmount);
 
     //     // Move past vesting period and withdraw remaining
@@ -517,9 +518,52 @@ contract FlexStakeTest is Test {
         vm.stopPrank();
     }
 
+    function test_PauseAndRelease() public {
+        vm.prank(owner);
+        uint256 optionId = _createBasicOption();
+
+        // Stake tokens
+        vm.startPrank(user1);
+        uint256 stakeAmount = 500 ether;
+        uint256 lockDuration = 30 days;
+        staking.stake(optionId, stakeAmount, lockDuration, "");
+
+        // Try withdraw before lock period (should fail)
+        vm.expectRevert(Error.WithdrawBeforeLockPeriod.selector);
+        staking.withdraw(optionId);
+        vm.stopPrank();
+
+        // Pause and release
+        vm.prank(owner);
+        staking.pauseAndRelease(optionId);
+
+        // Now withdraw should work even before lock period
+        vm.startPrank(user1);
+        uint256 balanceBefore = token.balanceOf(user1);
+        staking.withdraw(optionId);
+
+        // Should get full amount back (no penalty)
+        assertEq(token.balanceOf(user1), balanceBefore + stakeAmount);
+        vm.stopPrank();
+    }
+
+    function test_PauseAndReleaseAlreadyPaused() public {
+        vm.startPrank(owner);
+        uint256 optionId = _createBasicOption();
+        staking.pauseStaking(optionId);
+        staking.pauseAndRelease(optionId);
+        vm.stopPrank();
+
+        bool isPaused = staking.pausedOptions(optionId);
+        bool isReleased = staking.releasedOptions(optionId);
+        assertEq(isPaused, true);
+        assertEq(isReleased, true);
+    }
+
     // Helper function for flexible option
     function _createFlexibleOption() internal returns (uint256) {
-        StakingContract.Option memory option = StakingContract.Option({
+        FlexStake.Option memory option = FlexStake.Option({
+            id: 1,
             isLocked: false,
             minLockDuration: 0,
             maxLockDuration: 0,
@@ -536,7 +580,6 @@ contract FlexStakeTest is Test {
             hasTimeBasedMultiplier: false,
             multiplierIncreaseRate: 0,
             token: address(token),
-            paused: false,
             requiresData: false,
             hookContract: address(0)
         });
@@ -546,7 +589,8 @@ contract FlexStakeTest is Test {
 
     // Helper functions
     function _createBasicOption() internal returns (uint256) {
-        StakingContract.Option memory option = StakingContract.Option({
+        FlexStake.Option memory option = FlexStake.Option({
+            id: 1,
             isLocked: true,
             minLockDuration: MIN_LOCK,
             maxLockDuration: MAX_LOCK,
@@ -563,7 +607,6 @@ contract FlexStakeTest is Test {
             hasTimeBasedMultiplier: false,
             multiplierIncreaseRate: 0,
             token: address(token),
-            paused: false,
             requiresData: false,
             hookContract: address(0)
         });
@@ -572,7 +615,8 @@ contract FlexStakeTest is Test {
     }
 
     function _createOptionWithHooks() internal returns (uint256) {
-        StakingContract.Option memory option = StakingContract.Option({
+        FlexStake.Option memory option = FlexStake.Option({
+            id: 1,
             isLocked: true,
             minLockDuration: MIN_LOCK,
             maxLockDuration: MAX_LOCK,
@@ -589,7 +633,6 @@ contract FlexStakeTest is Test {
             hasTimeBasedMultiplier: false,
             multiplierIncreaseRate: 0,
             token: address(token),
-            paused: false,
             requiresData: true,
             hookContract: address(hook)
         });

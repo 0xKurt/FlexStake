@@ -1,33 +1,33 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.20;
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 /**
  * @title IStakingHooks
  * @notice Interface for implementing staking hooks
  * @dev Implement this interface to create custom hook logic for staking operations
  */
-interface IStakingHooks {
+interface IStakingHooks is IERC165 {
     /**
      * @notice Called before a stake is created
      * @param user Address of the user staking
      * @param optionId ID of the staking option
      * @param amount Amount being staked
-     * @param lockDuration Duration of the stake lock
+     * @param duration Duration of the stake lock
      * @param data Additional data for the stake
      */
-    function beforeStake(address user, uint256 optionId, uint256 amount, uint256 lockDuration, bytes calldata data)
-        external;
+    function beforeStake(address user, uint256 optionId, uint256 amount, uint256 duration, bytes calldata data) external;
 
     /**
      * @notice Called after a stake is created
      * @param user Address of the user staking
      * @param optionId ID of the staking option
      * @param amount Amount being staked
-     * @param lockDuration Duration of the stake lock
+     * @param duration Duration of the stake lock
      * @param data Additional data for the stake
      */
-    function afterStake(address user, uint256 optionId, uint256 amount, uint256 lockDuration, bytes calldata data)
-        external;
+    function afterStake(address user, uint256 optionId, uint256 amount, uint256 duration, bytes calldata data) external;
 
     /**
      * @notice Called before a withdrawal
@@ -66,4 +66,20 @@ interface IStakingHooks {
      * @param data Additional data from the stake
      */
     function afterExtend(address user, uint256 optionId, uint256 newDuration, bytes calldata data) external;
+
+    /**
+     * @notice Called before unstaking
+     * @param user Address of the user unstaking
+     * @param stakeId ID of the stake
+     * @param data Additional data from the stake
+     */
+    function beforeUnstake(address user, uint256 stakeId, bytes calldata data) external;
+
+    /**
+     * @notice Called after unstaking
+     * @param user Address of the user unstaking
+     * @param stakeId ID of the stake
+     * @param data Additional data from the stake
+     */
+    function afterUnstake(address user, uint256 stakeId, bytes calldata data) external;
 }

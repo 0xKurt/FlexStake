@@ -108,6 +108,25 @@ graph LR
     F --> F2[Option-specific Pause]
 ```
 
+## Emergency Features
+
+1. Emergency Pause
+   - Pauses all contract operations
+   - Only owner can activate/deactivate
+   - Emergency withdrawals still possible
+
+2. Option-specific Pause
+   - Pauses new stakes for specific option
+   - Existing stakes follow normal rules
+   - Only owner can activate/deactivate
+
+3. Pause and Release
+   - Pauses new stakes for specific option
+   - Releases all existing stakes from lock periods
+   - Disables penalties for withdrawals
+   - Cannot be reversed
+   - Only owner can activate
+
 ## Validation Rules
 
 1. Basic Parameters:
