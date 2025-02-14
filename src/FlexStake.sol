@@ -32,7 +32,6 @@ contract FlexStake is Error, OwnableUpgradeable, ReentrancyGuardUpgradeable {
         uint256 vestingStart;
         uint256 vestingCliff;
         uint256 vestingDuration;
-        uint256 baseMultiplier;
         bool hasTimeBasedMultiplier;
         uint256 multiplierIncreaseRate;
         address token;
@@ -159,10 +158,10 @@ contract FlexStake is Error, OwnableUpgradeable, ReentrancyGuardUpgradeable {
     }
 
     /**
-     * @notice Calculates the current value of a user's stake including all multipliers
+     * @notice Calculates the current value of a user's stake including time-based multiplier
      * @param optionId The ID of the staking option
      * @param user The address of the user
-     * @return uint256 The current value of the stake including base and time-based multipliers
+     * @return uint256 The current value of the stake including time-based multiplier
      */
     function getStakedValue(uint256 optionId, address user) external view returns (uint256) {
         Stake storage userStake = stakes[optionId][user];
@@ -172,14 +171,14 @@ contract FlexStake is Error, OwnableUpgradeable, ReentrancyGuardUpgradeable {
 
         uint256 value = userStake.amount;
         
-        // Apply base multiplier
-        value = (value * option.baseMultiplier) / 10000;
-        
         // Apply time-based multiplier if enabled
         if (option.hasTimeBasedMultiplier) {
             uint256 timeStaked = block.timestamp - userStake.creationTime;
-            uint256 timeMultiplier = (timeStaked * option.multiplierIncreaseRate) / 10000;
-            value = value * (10000 + timeMultiplier) / 10000;
+            // Convert time to days with 18 decimals precision
+            uint256 daysStaked = (timeStaked * 1e18) / 1 days;
+            // Calculate multiplier with 18 decimals precision
+            uint256 timeMultiplier = (daysStaked * option.multiplierIncreaseRate) / 1e18;
+            value = value * (1e18 + timeMultiplier) / 1e18;
         }
         
         return value;
@@ -716,8 +715,6 @@ contract FlexStake is Error, OwnableUpgradeable, ReentrancyGuardUpgradeable {
         if (option.maxStakeAmount != 0 && option.maxStakeAmount < option.minStakeAmount) {
             revert MaxStakeGreaterThanMinStake();
         }
-        // Add base multiplier validation
-        if (option.baseMultiplier < 10000) revert BaseMultiplierTooLow(); // 10000 = 100%
     }
 
     function _validateLockingParams(Option calldata option) internal pure {
